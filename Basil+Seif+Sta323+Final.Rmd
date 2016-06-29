@@ -1,0 +1,293 @@
+---
+title: "Sta 323 - Final - Spring 2016"
+output: rmarkdown::html_document
+runtime: shiny
+---
+
+<style type="text/css">
+.table {
+    width: 40%;
+    position: relative;
+    left: 7.5%;
+}
+</style>
+
+<br/><br/>
+
+### Rules
+
+1. Your solutions must be written up using this R Markdown (Rmd) file, this file must include your code and write up for each task.
+
+2. This exam is open book, open internet, closed other people. You may use *any* online or book based resource you would like, but you must include citations for any code that you use (directly or indirectly). You *may not* consult with anyone else about this exam other than the Professor or TAs for this course - this includes posting anything online.
+
+3. You have until 11 pm on Thursday, April 7th to complete this exam and turn it in via the Sakai assignments tool - late work will not be accepted. You should only submit this Rmd file and nothing else. Resubmissions are allowed, but only your last submission (before the deadline) will be graded. Technical difficulties are not an excuse for late work - do not wait until the last minute to upload.
+
+4. All of your answers must include a brief description / writeup of your approach. This includes both annotating / commenting your code *and* a separate written descriptions of all code / implementations. I should be able to suppress *all* code output in your document and still be able to read and make sense of your answers.
+
+5. The most important goal is to write code that can accomplish the given tasks, note however that grading will at least be partially based on the quality of the code you write - elegant, efficient code will be rewarded and messy, slow code will be penalized.
+
+6. No extensions will be given for this exam, any late exams will not be considered. 
+
+<br/>
+
+### The other normalization
+
+For this exam you will be working with data from an imaginary company, specifically a number of tables representing basic information about the company's employees. The company's data based administrator was a little bit overzealous in their normalization of the records and as such it is painful to answer even simple questions about the current employees.
+
+#### Data
+
+There are currently 8 separate tables covering the various employee details, a brief description of each table follows. These data are available as `employee.Rdata` on Sakai.
+
+
+* `employees` - Table listing all current employees 
+
+| Column     | Description                  |
+|:-----------|:-----------------------------|
+| `emp_id`   | Employee's unique id number  |
+| `name`     | Employee's full name         |
+| `gender`   | Employee's gender            |
+
+
+* `departments` - Table listing all departments within the company
+
+| Column     | Description                  |
+|:-----------|:-----------------------------|
+| `dept_id`  | Department's unique id       |
+| `dept_name`| Department's name            |
+
+
+* `pay_periods` - Table listing all possible pay periods for employees
+
+| Column      | Description                  |
+|:------------|:-----------------------------|
+| `pay_id`    | Pay period's unique id       |
+| `pay_period`| Pay period name              |
+
+
+* `education` - Table listing all possible education levels
+
+| Column     | Description                  |
+|:-----------|:-----------------------------|
+| `ed_id`    | Degree's unique id           |
+| `degree`   | Type of degree               |
+
+
+* `employee_departments` - Table mapping employees to their departments (one-to-many)
+
+| Column     | Description                  |
+|:-----------|:-----------------------------|
+| `emp_id`   | Employee's unique id         |
+| `dept_id`  | Department's unique id       |
+
+
+* `employee_pay_periods` - Table mapping employees to their pay periods (one-to-many)
+
+| Column     | Description                  |
+|:-----------|:-----------------------------|
+| `emp_id`   | Employee's unique id         |
+| `pay_id`   | Pay period's unique id       |
+
+
+* `employee_salaries` - Table mapping employees to their salary (per pay period) (one-to-many)
+
+| Column     | Description                  |
+|:-----------|:-----------------------------|
+| `emp_id`   | Employee's unique id         |
+| `salary`   | Salary per pay period        |
+
+
+* `employee_education` - Table mapping employees to their completed degrees (many-to-many)
+
+| Column     | Description                  |
+|:-----------|:-----------------------------|
+| `emp_id`   | Employee's unique id         |
+| `ed_id`    | Degree's unique id           |
+
+
+### Task 1 (20 pts)
+
+Combine these 8 tables into a single tidy data frame called `emp_full`. There should be one row per employee (5000 total) and should include all the available information about that employee. The final data frame *should not* include any of the id columns except for `emp_id`. 
+
+You should be able to accomplish this task without using any for loops - you are free to use dplyr or base R or any combination there of. As usual, the more elegant your solution the better your grade will be.
+
+#Write Up for Task 1
+
+I started task 1 by using 3 inner_join functions to add the salary, pay period, and dept name columns from the other 3 dataframes to the employees dataframe. After that, I used two inner joins to add a column that changed the pay id to pay periods and another column that changed dept id to the names of the departments. I then used select functions to remove the pay id and dept id columns. The only column I could not initially add with an innerjoin function was the degree column. This is because many employees had multiple degrees, making the dataframe more than 5000 rows if an innerjoin was used. 
+
+Instead, I used the distinct function to pick all of the initial entries per employee, using their employer ids from the employee education dataframe. I then did an antijoin between the employee education dataframe and the aforementioned dataframe, b, in order to find all of the non-unique entries. I put these in a dataframe, c. I then did this one more time to find any 3rd degrees that any employees may have had. I then did two fulljoin functions with the 2nd and 3rd degree employee education entries in order to add two distinct new columns. 
+
+For some reason, I was getting 4 extra empty rows of NAs in emp_full, so I used a slice function to get rid of them. 
+```{r}
+suppressMessages(library(dplyr))
+load(file="employee.Rdata")
+
+#add the salary, pay period, and dept name columns from the other 3 dataframes to the employees dataframe
+employees = inner_join(employees, employee_departments)
+employees = inner_join(employees, employee_pay_periods)
+employees = inner_join(employees, employee_salaries)
+
+#change pay id to pay periods and get rid of pay_id column
+employees = inner_join(employees, pay_periods)
+employees = employees %>% select(-pay_id)
+
+#Change dept_id to department names and get rid of dept_id category
+employees = inner_join(employees, departments)
+employees = employees %>% select(-dept_id)
+
+#find 1st degrees of all employees
+b = employee_education %>% distinct(as.numeric(employee_education$emp_id)) %>% select(emp_id, ed_id)
+
+#find second degress of all employees
+c = anti_join(employee_education, b)
+c = c %>% rename(ed_id2 = ed_id)
+d = c %>% distinct(as.numeric(c$emp_id)) %>% select(emp_id, ed_id2)
+
+#Find third degrees of all employees
+e = anti_join(c, d)
+e = e %>% rename(ed_id3 = ed_id2)
+
+#add degree columns to employees dataframe
+employees = inner_join(employees, b)
+employees = inner_join(employees, education)
+employees = employees %>% select(-ed_id)
+
+employees = full_join(employees, d)
+education = education %>% rename(ed_id2 = ed_id)
+employees = full_join(employees, education, by = "ed_id2")
+employees = employees %>% select(-ed_id2)
+
+employees = full_join(employees, e)
+education = education %>% rename(ed_id3 = ed_id2)
+employees = full_join(employees, education, by = "ed_id3")
+employees = employees %>% select(-ed_id3) %>% 
+                          rename(degree1 = degree.x) %>% 
+                          rename(degree2 = degree.y) %>% 
+                          rename(degree3 = degree)
+
+#get rid of last 4 NA columns and rename employees to emp_full
+emp_full = employees %>% slice(1:5000)
+```
+
+### Task 2 (30 pts)
+
+For the following subtasks you may use either the original tables or the new `emp_full` table.
+
+1. (6 pts) Visualize the number of each type of degree by company department. (Note - if an employee has more than one degree you should count only the highest degree achieved)
+
+#Write Up for Question 1
+
+I used the options(dplyr.width = Inf) function to make sure that all of the data in the dplyr summarize functions could be viewed at once. 
+
+For Question 1, I wrote a for loop and sequenced through the names of the dept_names to create a barplot for each individual deptartment name. I used the filter, group by, and summarize(n()) functions to find how many of each degree were in each respective company department. From there, I created a barplot for each respective department, each bar representing each individual degree type. 
+
+As we can see by the barplots, while the numbers are different for each respective department, the proportions are incredibly similar along all of the departments. 
+
+```{r}
+options(dplyr.width = Inf)
+
+dept = unique(emp_full$dept_name)
+
+#For loop that generated barplots for degrees of all departments
+for(i in seq_along(dept)){
+  bbb = emp_full %>% filter(dept_name == dept[i]) %>% group_by(degree1) %>% summarize(n())
+  
+  barplot(bbb[[2]], main = paste("Degrees in the", dept[i], "Department"), xlab = "Degrees", ylab = "Frequency", col = c(palette(rainbow(6))), names.arg = sort(unique(emp_full$degree1)))
+}
+
+```
+
+2. (6 pts) For each department calculate the minimum, maximum, mean, median, Q1, Q3 of salary as well as the department's overall payroll obligation (Note - you need to pay attention to pay period to assess this properly)
+
+#Write Up for Question 2
+By using the group_by and summarize functions in unison, I was able to find the mean, minimum, maximum, total, Q1, and Q3 of each department's salary. 
+
+As we can see from the data, marketing has the highest mean salary, while research far and away has the highest overall payroll obligation. Looking at the relatively average Q3 and mean for the reserach department, we can see that the research department probably has the highest employee share of the company. 
+
+```{r}
+#Summarize salary statistics based on department names
+emp_full %>% group_by(dept_name) %>% summarize(mean(salary), min(salary), max(salary), sum(salary), quantile(salary, 0.25), quantile(salary, 0.75))
+
+```
+
+3. (6 pts) Is there a salary disparity between the male and female employees at this company? What about within the individual departments? 
+
+#Write up for Question 3
+I similarly combined group_by and summarize functions as I did in Question 2 to come up with the mean, minimum, maximum, sum, Q1, and Q3 of salary for each male and female employees. However, because of the phrasing of the question, I also included a function to decide which degrees were most popular for each gender, in order to see if this had any correlation to pay. However, the most common degrees for both genders was unsurprisingly BA. Similarly, I wanted to see which department was most popular for each gender to see if that had any bearing on this question. However, the most popular departments for both genders was the Research Department.  
+
+Counter to most companies, this company pays its women slightly higher on average than its men. The minimum salary for a woman in this company is almost $250 dollars more than the minimum for a male employee. The maximum female salary is higher than the maximum male salary, and while women have a higher Q1 than men, the Q3's are exactly the same. The only category, in which men score higher than women, is in the overall sum salary. This, mixed with the Q3 results, tells us either that far more men than women work at this company, or that most of the higher salaries, particularly ones in the last quartile, are given to men.
+
+Secondly, I used the exact same code, but added a group_by(dept_name) function to analyze if there was a salary disparity between men and women among specific departments in the company. In viewing the results, 4 of the 7 departments had wome being paid higher than men on average. An interesting marker was looking at the two gender categories within the research department, the most popular department for both genders. While men were paid more on average within the research department, women had a higher minimum and higher maximum than men. Men however, had a higher sum, higher Q1, and higher Q3. Furthermore, in looking at the most popular degrees earned, the only group that didn't have BA as their most common degree was the women in accounting, who were most commonly BS's. However, they hada lower mean salary, lower minimum salary, lower sum salary, and lower Q1 than the men in accounting. 
+
+While I think specific disparities like these do exist and are interesting to analyze, overall, if anything it seems like this company treats its employees relatively equally, if anything giving monetary preference to its women. 
+
+```{r}
+#Summarize salary statistics based on gender 
+emp_full %>% group_by(gender) %>% summarize(mean(salary), min(salary), max(salary), sum(salary), quantile(salary, 0.25), quantile(salary, 0.75), tail(names(sort(table(dept_name))), 1), tail(names(sort(table(degree1))), 1))
+
+#Summarize salary statistics based on gender and department
+emp_full %>% group_by(dept_name, gender) %>% summarize(mean(salary), min(salary), max(salary), sum(salary), quantile(salary, 0.25), quantile(salary, 0.75), tail(names(sort(table(degree1))), 1))
+```
+
+4. (6 pts) Summarize the break down of BS vs BA degrees for each department. (Note - for these data anyone with a post-secondary degree will also have a Bachelors of some kind)
+
+#Write up for Question 4
+
+In writing this code, I filtered through all three of my degree categories to find all of the BA's and BS's. I then grouped by department and found how many BA's and BS's were in each department, using the summarize function. 
+
+I also removed the group_by functions from the code in order to count the total number of BA's and BS's in the entire company. As can be seen, all 5,000 employees have either a BA or a BS. There are approximate 350 more BA's than BS's total. 
+
+As far as by department goes, Research has the most BA's and the most BS's by far, with 717 BS's and 771 BA's. Sales and marketing are the second and third highest respectively for both degree types while Accounting has the least of both. In fact, every single department has more BA's than BS's.
+
+```{r}
+#Find number of all employees with BA for either of 3 degrees, based on department
+emp_full %>% filter(degree1 == "BA" | degree2 == "BA" | degree3 == "BA") %>% group_by(dept_name) %>% summarize(n())
+
+#Find total number of employees with BAs
+emp_full %>% filter(degree1 == "BA" | degree2 == "BA" | degree3 == "BA") %>% summarize(n())
+
+#Find number of all employees with BS for either of 3 degrees, based on department
+emp_full %>% filter(degree1 == "BS" | degree2 == "BS" | degree3 == "BS") %>% group_by(dept_name) %>% summarize(n())
+
+#Find total number of employees with BSs
+emp_full %>% filter(degree1 == "BS" | degree2 == "BS" | degree3 == "BS") %>% summarize(n())
+
+```
+
+5. (6 pts) Construct a matrix that contains the counts of the co-occurrence of the first letter of the employees' first and last names. This matrix should have 26 rows and 26 columns - the rows representing the first letter of the first name and the columns representing the first letter of the last name. For example, Andre Alexander would add a count to the cell at row 1 column 1. Use this matrix to create a visualization that you can use to comment on whether alliterative names (first letter of first and last names are the same, e.g. Andre Alexander) are more or less common than expected.
+
+#Write Up for Question 5
+
+I used strsplit to split each name by the spaces, creating 2 character vectors for each row in the name column. I also created an empty 26 x 26 matrix called abc, with row names and column names that corresponded to the alphabet. 
+
+Then, I wrote a for loop that picked the first letter of each character vector for each row in the names column of emp_full. It then added a 1 to the corresponding element in the matrix for each iteration. 
+
+I then created a barplot for all of the names with alliterative initials, and then another barplot to compare the number of alliterative initials to non-alliterative initials. 
+
+As we can see from the barplots, the most common alliterative initials are M, C, B, and S respectively. Looking at the second barplot alone, we can estimate that there are about 250 instances of alliterative initials and 4,750 instance of non-alliterative initials. There are 676 possible combinations of initials, with only 26 alliterative possibilities. This means that the expected probability of alliterative initials should be 0.038, with the expected value being 192. 
+
+Based on the code sum(diag(abc)), we know that there were 252 observed alliterative initials, making that an observed probability of 0.0504. Based on the proximity of the observed and the expected, I would say that these alliterative names are about as common as expected.
+
+```{r}
+#Split names into first and last name
+cba = strsplit(emp_full$name, " ")
+
+#create empty matrix
+abc = matrix(rep(0, 26^2), nrow = 26, ncol = 26)
+rownames(abc) = colnames(abc) = LETTERS
+
+#For loop that iteratively adds 1 to each respective initial element in matrix
+for(i in seq_along(cba)){
+  fn = substr(cba[[i]][1], 1, 1)
+  ln = substr(cba[[i]][2], 1, 1)
+  abc[fn, ln] = 1 + abc[fn, ln]
+}
+
+#barplot with alliterative names
+barplot(diag(abc), main = "Spread of Alliterative Names", xlab = "Letters", ylab = "Frequency", col = c(palette(rainbow(26))), names.arg = LETTERS)
+
+#barplot with alliterative vs. non-alliterative names, both expected and observed values
+barplot(matrix(c(sum(diag(abc)), (5000*length(LETTERS)/length(LETTERS)^2), sum(abc) - sum(diag(abc)), (5000*1-(length(LETTERS)/length(LETTERS)^2))), nrow = 1, ncol = 4), main = "Alliterative vs. Non-Alliterative Names", xlab = "Categories", ylab = "Frequency", col=c(palette(rainbow(4))), names.arg = c("Obs Alliterative", "Exp Alliterative", "Obs Non-Alliterative", "Exp Non-Alliterative"))
+
+
+```
+
